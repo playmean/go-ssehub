@@ -33,6 +33,12 @@ func NewHub(settings *Settings) *Hub {
 }
 
 func (hub *Hub) Handler(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Accept") != "text/event-stream" {
+		hub.pageHandler(w, r)
+
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
