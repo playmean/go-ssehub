@@ -12,7 +12,7 @@ func (hub *Hub) pageHandler(w http.ResponseWriter, r *http.Request) {
 		<!DOCTYPE html>
 		<html>
 		<body style="background-color: #333; color: #eee">
-			<pre id="logs" style="position: fixed; top: 0; bottom: 0; left: 0; right: 0; padding: 0 8px"></pre>
+			<pre id="logs" style="position: fixed; top: 0; bottom: 0; left: 0; right: 0; padding: 0 8px; overflow: auto"></pre>
 			<script>
 				const logBox = document.getElementById('logs');
 				const es = new EventSource('%s');
