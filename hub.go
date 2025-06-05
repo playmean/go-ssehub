@@ -34,7 +34,11 @@ func NewHub(settings *Settings) *Hub {
 
 func (hub *Hub) Handler(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Accept") != "text/event-stream" {
-		hub.pageHandler(w, r)
+		if !hub.settings.DisableLogPage {
+			hub.pageHandler(w, r)
+		} else {
+			http.Error(w, "cannot handle plain request", http.StatusBadRequest)
+		}
 
 		return
 	}
