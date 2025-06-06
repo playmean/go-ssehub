@@ -3,7 +3,6 @@ package ssehub
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -96,9 +95,7 @@ func (hub *Hub) Handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (hub *Hub) Write(p []byte) (n int, err error) {
-	msg := strings.TrimSpace(string(p))
-
-	hub.Send(Message{Text: msg})
+	hub.Send(Message{Text: string(p)})
 
 	return len(p), nil
 }
