@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -12,9 +13,11 @@ import (
 )
 
 func main() {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	hub := ssehub.NewHub(&ssehub.Settings{
 		KeepAlive: 5 * time.Second,
-		Retention: 5,
 	})
 
 	http.HandleFunc("GET /log", hub.Handler)
@@ -23,29 +26,21 @@ func main() {
 
 	logger := hub.NewLogger()
 
-	// Graceful shutdown on signal
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	go http.ListenAndServe(":8080", nil)
 
-	go func() {
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 
-		for {
-			select {
-			case <-ticker.C:
-				logger.Println("Tick")
-			case <-stop:
-				log.Println("Shutting down...")
+	for {
+		select {
+		case <-ticker.C:
+			logger.Println("Tick")
+		case <-ctx.Done():
+			log.Println("Shutting down...")
 
-				hub.Shutdown()
+			hub.Shutdown()
 
-				os.Exit(0)
-			}
+			return
 		}
-	}()
-
-	log.Println("Server started")
-
-	http.ListenAndServe(":8080", nil)
+	}
 }

@@ -4,13 +4,17 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/playmean/go-ssehub"
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	hub := ssehub.NewHub(&ssehub.Settings{
 		KeepAlive: 5 * time.Second,
@@ -36,7 +40,10 @@ func main() {
 		}
 
 		for {
-			line, err := client.Next()
+			line, err, done := client.Next()
+			if done {
+				return
+			}
 			if err != nil {
 				panic(err)
 			}
@@ -55,6 +62,8 @@ func main() {
 				Text: time.Now().String(),
 			})
 		case <-ctx.Done():
+			hub.Shutdown()
+
 			return
 		}
 	}

@@ -9,7 +9,8 @@ import (
 )
 
 func main() {
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	client := ssehub.NewReceiver(ctx, "http://localhost:8080/stream", &ssehub.ReceiverSettings{
 		LinesBufferSize: 3,
@@ -23,11 +24,12 @@ func main() {
 	time.Sleep(3 * time.Second)
 
 	for {
-		line, err := client.Next()
-		if err != nil {
-			fmt.Println(err)
-
+		line, err, done := client.Next()
+		if done {
 			break
+		}
+		if err != nil {
+			panic(err)
 		}
 
 		fmt.Println(line)

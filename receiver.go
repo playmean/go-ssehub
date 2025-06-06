@@ -80,12 +80,12 @@ func (r *Receiver) Shutdown() {
 	r.shutdown = true
 }
 
-func (r *Receiver) Next() (string, error) {
+func (r *Receiver) Next() (string, error, bool) {
 	select {
 	case line := <-r.chTick:
-		return line, nil
+		return line, nil, false
 	case <-r.ctx.Done():
-		return "", fmt.Errorf("context done")
+		return "", fmt.Errorf("context done"), true
 	}
 }
 
