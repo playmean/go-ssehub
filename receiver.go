@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 )
 
 type Receiver struct {
@@ -16,11 +15,11 @@ type Receiver struct {
 	resp     *http.Response
 	out      io.Writer
 	shutdown bool
-	linesBuf []string
 	ch       chan string
 	chTick   chan string
-	mu       sync.Mutex
 	settings *ReceiverSettings
+
+	C chan string
 }
 
 func NewReceiver(ctx context.Context, url string, settings *ReceiverSettings) *Receiver {
@@ -38,10 +37,11 @@ func NewReceiver(ctx context.Context, url string, settings *ReceiverSettings) *R
 		resp:     nil,
 		out:      nil,
 		shutdown: true,
-		linesBuf: make([]string, 0),
-		ch:       make(chan string, 1),
-		chTick:   make(chan string, 1),
+		ch:       make(chan string),
+		chTick:   make(chan string, settings.LinesBufferSize),
 		settings: settings,
+
+		C: make(chan string, settings.LinesBufferSize),
 	}
 
 	return &r
@@ -81,28 +81,11 @@ func (r *Receiver) Shutdown() {
 }
 
 func (r *Receiver) Next() (string, error) {
-	r.mu.Lock()
-	if r.settings.LinesBufferSize != 0 && len(r.linesBuf) > 0 {
-		line := r.linesBuf[0]
-
-		r.linesBuf = r.linesBuf[1:]
-
-		r.mu.Unlock()
-
+	select {
+	case line := <-r.chTick:
 		return line, nil
-	} else {
-		r.mu.Unlock()
-
-		select {
-		case line := <-r.chTick:
-			if r.settings.LinesBufferSize == 0 {
-				return line, nil
-			}
-		case <-r.ctx.Done():
-			return "", fmt.Errorf("context done")
-		}
-
-		return r.Next()
+	case <-r.ctx.Done():
+		return "", fmt.Errorf("context done")
 	}
 }
 
@@ -160,18 +143,13 @@ func (r *Receiver) receiveLoop() {
 				r.out.Write([]byte(line))
 			}
 
-			if r.settings.LinesBufferSize != 0 {
-				r.mu.Lock()
-				r.linesBuf = append(r.linesBuf, line)
-
-				if r.settings.LinesBufferSize > 0 && len(r.linesBuf) > r.settings.LinesBufferSize {
-					r.linesBuf = r.linesBuf[1:]
-				}
-				r.mu.Unlock()
+			select {
+			case r.chTick <- line:
+			default:
 			}
 
 			select {
-			case r.chTick <- line:
+			case r.C <- line:
 			default:
 			}
 
