@@ -8,24 +8,26 @@ import (
 )
 
 type Hub struct {
-	settings    Settings
-	messages    chan Message
-	clients     map[*Client]bool
-	mu          sync.Mutex
-	shutdown    chan struct{}
-	shutdownWg  sync.WaitGroup
-	startOnce   sync.Once
-	closeOnce   sync.Once
-	closed      bool
-	closedMutex sync.RWMutex
+	settings     Settings
+	messages     chan Message
+	lastMessages []Message
+	clients      map[*Client]bool
+	mu           sync.Mutex
+	shutdown     chan struct{}
+	shutdownWg   sync.WaitGroup
+	startOnce    sync.Once
+	closeOnce    sync.Once
+	closed       bool
+	closedMutex  sync.RWMutex
 }
 
 func NewHub(settings *Settings) *Hub {
 	hub := &Hub{
-		clients:  make(map[*Client]bool),
-		messages: make(chan Message, 100),
-		shutdown: make(chan struct{}),
-		settings: *settings,
+		clients:      make(map[*Client]bool),
+		messages:     make(chan Message, 100),
+		lastMessages: make([]Message, 0),
+		shutdown:     make(chan struct{}),
+		settings:     *settings,
 	}
 
 	return hub
@@ -63,7 +65,18 @@ func (hub *Hub) Handler(w http.ResponseWriter, r *http.Request) {
 	hub.clients[client] = true
 	hub.mu.Unlock()
 
-	fmt.Fprintf(w, "data: \n\n")
+	hsSent := false
+
+	for _, msg := range hub.lastMessages {
+		fmt.Fprintf(w, "data: %s\n\n", msg.Text)
+
+		hsSent = true
+	}
+
+	if !hsSent {
+		fmt.Fprintf(w, "data: \n\n")
+	}
+
 	flusher.Flush()
 
 	defer func() {
@@ -155,6 +168,15 @@ func (hub *Hub) broadcaster() {
 			}
 
 			hub.mu.Lock()
+
+			if hub.settings.Retention > 0 && !msg.ping {
+				hub.lastMessages = append(hub.lastMessages, msg)
+
+				if len(hub.lastMessages) > hub.settings.Retention {
+					hub.lastMessages = hub.lastMessages[1:]
+				}
+			}
+
 			for client := range hub.clients {
 				select {
 				case client.Chan <- msg.Text:
@@ -165,7 +187,7 @@ func (hub *Hub) broadcaster() {
 			}
 			hub.mu.Unlock()
 		case <-ticker.C:
-			hub.Send(Message{Text: ""})
+			hub.Send(Message{Text: "", ping: true})
 		case <-hub.shutdown:
 			return
 		}

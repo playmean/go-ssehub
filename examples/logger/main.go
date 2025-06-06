@@ -14,6 +14,7 @@ import (
 func main() {
 	hub := ssehub.NewHub(&ssehub.Settings{
 		KeepAlive: 5 * time.Second,
+		Retention: 5,
 	})
 
 	http.HandleFunc("GET /log", hub.Handler)
