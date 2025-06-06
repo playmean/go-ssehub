@@ -5,8 +5,6 @@ import (
 	"net/http"
 )
 
-// TODO 19.05.2025 autoscroll
-
 func (hub *Hub) pageHandler(w http.ResponseWriter, r *http.Request) {
 	html := fmt.Sprintf(`
 		<!DOCTYPE html>
@@ -22,7 +20,7 @@ func (hub *Hub) pageHandler(w http.ResponseWriter, r *http.Request) {
 
 					if (!msg.length) return;
 
-					logBox.textContent += msg + "\n";
+					logBox.textContent = msg + "\n" + logBox.textContent;
 				};
 			</script>
 		</body>
