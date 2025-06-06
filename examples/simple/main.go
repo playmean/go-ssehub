@@ -28,7 +28,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				hub.Send(ssehub.Message{
-					Text: "test",
+					Text: time.Now().String(),
 				})
 			case <-ctx.Done():
 				return

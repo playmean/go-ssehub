@@ -8,5 +8,6 @@ type Settings struct {
 }
 
 type ReceiverSettings struct {
-	Method string
+	Method          string
+	LinesBufferSize int
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 type Receiver struct {
@@ -15,7 +16,10 @@ type Receiver struct {
 	resp     *http.Response
 	out      io.Writer
 	shutdown bool
-	ch       chan []byte
+	linesBuf []string
+	ch       chan string
+	chTick   chan string
+	mu       sync.Mutex
 	settings *ReceiverSettings
 }
 
@@ -29,13 +33,15 @@ func NewReceiver(ctx context.Context, url string, settings *ReceiverSettings) *R
 	}
 
 	r := Receiver{
-		ctx,
-		url,
-		nil,
-		nil,
-		true,
-		make(chan []byte, 1),
-		settings,
+		ctx:      ctx,
+		url:      url,
+		resp:     nil,
+		out:      nil,
+		shutdown: true,
+		linesBuf: make([]string, 0),
+		ch:       make(chan string, 1),
+		chTick:   make(chan string, 1),
+		settings: settings,
 	}
 
 	return &r
@@ -72,6 +78,32 @@ func (r *Receiver) ConnectSync() error {
 
 func (r *Receiver) Shutdown() {
 	r.shutdown = true
+}
+
+func (r *Receiver) Next() (string, error) {
+	r.mu.Lock()
+	if r.settings.LinesBufferSize != 0 && len(r.linesBuf) > 0 {
+		line := r.linesBuf[0]
+
+		r.linesBuf = r.linesBuf[1:]
+
+		r.mu.Unlock()
+
+		return line, nil
+	} else {
+		r.mu.Unlock()
+
+		select {
+		case line := <-r.chTick:
+			if r.settings.LinesBufferSize == 0 {
+				return line, nil
+			}
+		case <-r.ctx.Done():
+			return "", fmt.Errorf("context done")
+		}
+
+		return r.Next()
+	}
 }
 
 func (r *Receiver) makeRequest() error {
@@ -114,7 +146,7 @@ func (r *Receiver) scanLoop() {
 			continue
 		}
 
-		r.ch <- []byte(line + "\n")
+		r.ch <- line
 	}
 
 	r.resp.Body.Close()
@@ -123,9 +155,24 @@ func (r *Receiver) scanLoop() {
 func (r *Receiver) receiveLoop() {
 	for {
 		select {
-		case buf := <-r.ch:
+		case line := <-r.ch:
 			if r.out != nil {
-				r.out.Write(buf)
+				r.out.Write([]byte(line))
+			}
+
+			if r.settings.LinesBufferSize != 0 {
+				r.mu.Lock()
+				r.linesBuf = append(r.linesBuf, line)
+
+				if r.settings.LinesBufferSize > 0 && len(r.linesBuf) > r.settings.LinesBufferSize {
+					r.linesBuf = r.linesBuf[1:]
+				}
+				r.mu.Unlock()
+			}
+
+			select {
+			case r.chTick <- line:
+			default:
 			}
 
 		case <-r.ctx.Done():
